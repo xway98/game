@@ -1,0 +1,12 @@
+{
+  "name": "battleship_online",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js",
+    "postinstall": "echo \"nothing to build\""
+  },
+  "dependencies": {
+    "ws": "^8.17.0"
+  }
+}

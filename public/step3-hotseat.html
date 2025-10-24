@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Battleship — Step 3 (Hot‑seat)</title>
+  <style>
+    :root{--bg:#0b1220;--panel:#111a2e;--muted:#94a3b8;--line:#263143;--hit:#ef4444;--miss:#64748b;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Inter,Arial;background:var(--bg);color:#e5e7eb}
+    header{padding:16px 20px;border-bottom:1px solid #1f2937;background:#0d1526;position:sticky;top:0;z-index:10}
+    h1{margin:0;font-size:18px}
+    .wrap{max-width:1100px;margin:18px auto;padding:0 16px}
+    .card{background:var(--panel);border:1px solid #1f2937;border-radius:16px;padding:16px;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+    .status{margin-left:auto;padding:6px 10px;border:1px solid #334155;border-radius:10px;background:#0e1729}
+    button{border:1px solid #334155;background:#0e1729;color:#e5e7eb;padding:8px 12px;border-radius:10px;cursor:pointer}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    .boards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .board h3{margin:0 0 8px 0;font-weight:600;font-size:16px}
+    .grid{display:grid;grid-template-columns:repeat(10,32px);gap:6px}
+    .cell{width:32px;height:32px;border-radius:6px;border:1px solid var(--line);background:#0f1b33;cursor:pointer;}
+    .cell.ship{background:#1b2a4d}
+    .cell.hit{background:rgba(239,68,68,.2);border-color:var(--hit)}
+    .cell.miss{background:rgba(148,163,184,.2);border-color:var(--miss)}
+    .cell.sunk{box-shadow:0 0 0 2px var(--hit) inset}
+    .muted{color:var(--muted);font-size:12px}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #334155;background:#0e1729;font-size:12px}
+    .row{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:900px){.row{grid-template-columns:320px 1fr}}
+  </style>
+</head>
+<body>
+  <header><h1>⚓ Battleship — Step 3 (Hot‑seat 2‑player on one computer)</h1></header>
+  <div class="wrap">
+    <div class="row">
+      <div class="card">
+        <h2 style="margin:0 0 8px 0;font-size:16px">Controls</h2>
+        <div class="toolbar">
+          <span id="phaseTag" class="pill">—</span>
+          <button id="btnAuto">Auto‑place for current player</button>
+          <button id="btnClear">Clear current player's board</button>
+          <button id="btnReady">I'm ready</button>
+          <button id="btnSwap" title="Switch to the other player during placement">Swap player</button>
+          <button id="btnReset">Reset game</button>
+          <span id="status" class="status">Welcome.</span>
+        </div>
+        <p class="muted" id="helpText">Both players will place ships (auto‑place is easiest). Then battle: click enemy cells on your turn.</p>
+      </div>
+      <div class="card">
+        <div class="boards">
+          <div class="board">
+            <h3 id="myTitle">Your Board</h3>
+            <div id="myGrid" class="grid"></div>
+            <div class="muted">Shows <b>Player <span id="curPlayerA"></span></b>'s ships and any hits taken.</div>
+          </div>
+          <div class="board">
+            <h3>Enemy Board</h3>
+            <div id="enemyGrid" class="grid"></div>
+            <div class="muted">On your turn, click to fire. Hits turn red, misses gray. Sunk outlined.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // === Step 3: Hot-seat 2-player mode ===
+  const SIZE = 10;
+  const SHIP_LENGTHS = [5,4,3,3,2];
+  const EMPTY = 0;
+
+  // DOM
+  const myGrid = document.getElementById('myGrid');
+  const enemyGrid = document.getElementById('enemyGrid');
+  const statusEl = document.getElementById('status');
+  const phaseTag = document.getElementById('phaseTag');
+  const curPlayerA = document.getElementById('curPlayerA');
+  const btnAuto = document.getElementById('btnAuto');
+  const btnClear = document.getElementById('btnClear');
+  const btnReady = document.getElementById('btnReady');
+  const btnSwap = document.getElementById('btnSwap');
+  const btnReset = document.getElementById('btnReset');
+
+  // State
+  let players; // [{board, ships, marks, ready}, ...]
+  let phase;   // 'placing' | 'battle' | 'gameover'
+  let placingIndex; // 0 or 1 (whose placement screen)
+  let turn;    // 0 or 1 (whose turn to fire)
+  let winner;  // 0 or 1 or null
+
+  init();
+
+  function init(){
+    players = [mkPlayer(), mkPlayer()];
+    phase = 'placing';
+    placingIndex = 0;
+    turn = null;
+    winner = null;
+    buildGrid(myGrid, onMyCellClick);
+    buildGrid(enemyGrid, onEnemyCellClick);
+    autoPlaceFleet(players[0]);
+    autoPlaceFleet(players[1]);
+    paint();
+    setStatus('Player 1: place ships (Auto‑place recommended).');
+  }
+
+  function mkPlayer(){
+    return { board: emptyBoard(), ships: [], marks: emptyBoard(), ready:false };
+  }
+
+  function emptyBoard(){ return Array.from({length:SIZE},()=>Array(SIZE).fill(EMPTY)); }
+
+  function buildGrid(el, handler){
+    el.innerHTML='';
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const d=document.createElement('div');
+        d.className='cell';
+        d.dataset.rc = r+','+c;
+        if (handler) d.addEventListener('click',()=>{
+          const [rr,cc]=d.dataset.rc.split(',').map(Number);
+          handler(rr,cc,d);
+        });
+        el.appendChild(d);
+      }
+    }
+  }
+
+  // Buttons
+  btnAuto.onclick = ()=>{
+    if (phase!=='placing') return;
+    const p = players[placingIndex];
+    p.board = emptyBoard();
+    p.ships = [];
+    autoPlaceFleet(p);
+    paint();
+    setStatus(`Player ${placingIndex+1}: fleet auto‑placed.`);
+  };
+
+  btnClear.onclick = ()=>{
+    if (phase!=='placing') return;
+    const p = players[placingIndex];
+    p.board = emptyBoard();
+    p.ships = [];
+    paint();
+    setStatus(`Player ${placingIndex+1}: board cleared.`);
+  };
+
+  btnReady.onclick = ()=>{
+    if (phase!=='placing') return;
+    const p = players[placingIndex];
+    if (countShipCells(p.board) === 0){ setStatus('Place ships first (use Auto‑place).'); return; }
+    p.ready = true;
+    if (players.every(x=>x.ready)){
+      phase='battle';
+      turn = Math.random()<0.5?0:1;
+      setStatus(`Battle! Player ${turn+1} starts. Click enemy cells to fire.`);
+    } else {
+      placingIndex = 1 - placingIndex;
+      setStatus(`Player ${placingIndex+1}: place ships (Auto‑place recommended).`);
+    }
+    paint();
+  };
+
+  btnSwap.onclick = ()=>{
+    if (phase!=='placing') return;
+    placingIndex = 1 - placingIndex;
+    setStatus(`Player ${placingIndex+1}: place ships.`);
+    paint();
+  };
+
+  btnReset.onclick = ()=>{ init(); };
+
+  // Placement
+  function autoPlaceFleet(player){
+    for(const len of SHIP_LENGTHS){ placeRandomShip(player.board, player.ships, len); }
+  }
+  function placeRandomShip(board, ships, length){
+    let placed=false;
+    for(let tries=0;tries<2000 && !placed;tries++){
+      const horiz = Math.random()<0.5;
+      const r = Math.floor(Math.random()*SIZE);
+      const c = Math.floor(Math.random()*SIZE);
+      if (canPlace(board,r,c,length,horiz)){
+        placeShip(board,ships,r,c,length,horiz);
+        placed=true;
+      }
+    }
+    if (!placed) throw new Error('Could not place ship');
+  }
+  function canPlace(board,r,c,length,h){
+    if (h && c+length>SIZE) return false;
+    if (!h && r+length>SIZE) return false;
+    for(let i=0;i<length;i++){
+      const rr=r+(h?0:i), cc=c+(h?i:0);
+      if (board[rr][cc]!==EMPTY) return false;
+    }
+    return true;
+  }
+  function placeShip(board,ships,r,c,length,h){
+    const id = ships.length+1;
+    const cells=[];
+    for(let i=0;i<length;i++){
+      const rr=r+(h?0:i), cc=c+(h?i:0);
+      board[rr][cc]=id; cells.push([rr,cc]);
+    }
+    ships.push({id,length,cells,hits:new Set()});
+  }
+  function countShipCells(board){
+    let n=0; for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(board[r][c]>0) n++; return n;
+  }
+
+  // Interactions
+  function onMyCellClick(r,c){
+    if (phase!=='placing') return; // keep battle moves on enemy only
+    // Optional: let players toggle a dummy training cell (not recommended). We'll keep placement via auto for consistency.
+  }
+
+  function onEnemyCellClick(r,c){
+    if (phase!=='battle' || winner!==null) return;
+    const me = turn; const opp = 1 - turn;
+
+    // already fired here?
+    if (players[me].marks[r][c]===2 || players[me].marks[r][c]===3){
+      setStatus('You already fired there.'); return;
+    }
+
+    const id = players[opp].board[r][c];
+    if (id===EMPTY){
+      players[me].marks[r][c]=3; // miss on my marks
+      setStatus(`Player ${me+1}: Miss.`);
+      // switch turn
+      turn = opp;
+    } else {
+      players[me].marks[r][c]=2; // I see a hit there
+      const ship = players[opp].ships.find(s=>s.id===id);
+      ship.hits.add(`${r},${c}`);
+      if (ship.hits.size===ship.length){
+        setStatus(`Player ${me+1}: Sunk a ship of length ${ship.length}!`);
+      } else {
+        setStatus(`Player ${me+1}: Hit! Fire again next turn? Not in classic rules.`);
+      }
+      // In classic rules, turn still passes after each shot. Keep it simple:
+      turn = opp;
+
+      // win check: all opponent ships sunk?
+      const oppAllSunk = players[opp].ships.every(s=>s.hits.size===s.length);
+      if (oppAllSunk){
+        phase='gameover'; winner=me;
+        setStatus(`🏆 Player ${me+1} wins!`);
+      }
+    }
+    paint();
+  }
+
+  // Paint from the perspective of the current context
+  function paint(){
+    // Update tags
+    phaseTag.textContent = phase==='placing' ? `Placing: Player ${placingIndex+1}` : (phase==='battle' ? `Battle — Turn: Player ${turn+1}` : 'Game Over');
+    curPlayerA.textContent = phase==='placing' ? (placingIndex+1) : (turn+1);
+    document.getElementById('myTitle').textContent = phase==='placing' ? `Player ${placingIndex+1} — Your Board` : `Player ${turn+1} — Your Board`;
+
+    // Enable/disable controls
+    btnAuto.disabled = (phase!=='placing');
+    btnClear.disabled = (phase!=='placing');
+    btnReady.disabled = (phase!=='placing');
+    btnSwap.disabled = (phase!=='placing');
+
+    // Choose viewer indices
+    const viewer = (phase==='placing') ? placingIndex : turn; // whose perspective we show as "you"
+    const enemy  = 1 - viewer;
+
+    // Paint my board (viewer)
+    const me = players[viewer];
+    [...myGrid.children].forEach(cell=>{
+      const [r,c]=cell.dataset.rc.split(',').map(Number);
+      const id = me.board[r][c];
+      // show ships and hits taken (from enemy's marks). Enemy marks on me = players[enemy].marks
+      const hitTaken = players[enemy].marks[r][c]===2;
+      const missOnMe = players[enemy].marks[r][c]===3;
+      cell.classList.toggle('ship', id!==EMPTY);
+      cell.classList.toggle('hit', hitTaken);
+      cell.classList.toggle('miss', missOnMe);
+      // sunk styling on my board if that ship is sunk
+      let sunk=false;
+      if (id!==EMPTY){
+        const ship = me.ships.find(s=>s.id===id);
+        if (ship && ship.hits.size===ship.length) sunk=true;
+      }
+      cell.classList.toggle('sunk', sunk);
+    });
+
+    // Paint enemy board (what viewer knows)
+    const opp = players[enemy];
+    const myMarks = me.marks; // viewer's view of enemy grid
+    [...enemyGrid.children].forEach(cell=>{
+      const [r,c]=cell.dataset.rc.split(',').map(Number);
+      const mark = myMarks[r][c];
+      cell.classList.toggle('hit', mark===2);
+      cell.classList.toggle('miss', mark===3);
+      // sunk outline only if that hit belongs to a fully sunk enemy ship
+      let sunk=false;
+      if (mark===2){
+        const id = opp.board[r][c];
+        const ship = opp.ships.find(s=>s.id===id);
+        if (ship && ship.hits.size===ship.length) sunk=true;
+      }
+      cell.classList.toggle('sunk', sunk);
+    });
+  }
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+  </script>
+</body>
+</html>

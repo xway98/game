@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Battleship — Online (Step 4)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Battleship — Online</h1>
+
+    <div class="toolbar">
+      <button id="btnCreate" class="primary">Create room</button>
+      <input id="roomCode" placeholder="Enter 6-digit code" maxlength="6" />
+      <button id="btnJoin">Join</button>
+      <span id="pill" class="pill">—</span>
+      <span id="status" class="status">Not connected.</span>
+    </div>
+
+    <div class="boards">
+      <section>
+  <h2>Your Board <span class="hint">Place fleet → I’m ready</span></h2>
+
+  <div class="row" style="margin-bottom:8px;">
+    <button id="btnManual" class="primary">Manual place</button>
+    <button id="btnRotate">Rotate (R)</button>
+    <button id="btnClearLocal">Clear</button>
+    <span class="muted" id="shipInfo">Ships: 5,4,3,3,2 · Dir: H</span>
+  </div>
+
+  <div id="myBoard" class="grid"></div>
+
+  <div class="row">
+    <button id="btnAuto">Auto-place</button>
+    <button id="btnReady">I’m ready</button>
+  </div>
+
+  <div class="legend">
+    <span class="swatch ship"></span><span class="muted">Ship</span>
+    <span class="swatch hit"></span><span class="muted">Hit</span>
+    <span class="swatch miss"></span><span class="muted">Miss</span>
+    <span class="swatch sunk"></span><span class="muted">Sunk</span>
+  </div>
+</section>
+<!-- Splash overlay (3s) -->
+<div id="introScreen" class="intro">
+  <img src="images/logo.png" alt="Shivu vs Shriya" class="intro-logo" />
+</div>
+
+      <section>
+        <h2>Enemy Board <span class="hint">Click on your turn</span></h2>
+        <div id="fleetTracker" class="fleet"></div>
+        <div id="enemyBoard" class="grid"></div>
+        <small class="muted">Click to fire on your turn.</small>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+  <div id="toast" class="toast"></div>
+</body>
