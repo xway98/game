@@ -2,6 +2,7 @@
   "name": "battleship_online",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "start": "node server/server.js",
     "postinstall": "echo \"nothing to build\""
